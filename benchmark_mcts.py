@@ -30,12 +30,12 @@ from power_monitor import PowerMonitor
 
 # Medium play strength configuration (matching SST)
 BENCHMARK_CONFIG = {
-    2: {'iterations': 200, 'exploration': 1.414, 'rollout_depth': 10},
-    3: {'iterations': 500, 'exploration': 1.414, 'rollout_depth': 15},
-    5: {'iterations': 1000, 'exploration': 1.414, 'rollout_depth': 25},
-    9: {'iterations': 5000, 'exploration': 1.414, 'rollout_depth': 40},
-    13: {'iterations': 7500, 'exploration': 1.414, 'rollout_depth': 60},
-    19: {'iterations': 10000, 'exploration': 1.414, 'rollout_depth': 80},
+    2: {'iterations': 200, 'exploration': 1.414, 'rollout_depth': 10, 'trials': 5},
+    3: {'iterations': 500, 'exploration': 1.414, 'rollout_depth': 15, 'trials': 5},
+    5: {'iterations': 1000, 'exploration': 1.414, 'rollout_depth': 25, 'trials': 5},
+    9: {'iterations': 5000, 'exploration': 1.414, 'rollout_depth': 40, 'trials': 3},
+    13: {'iterations': 7500, 'exploration': 1.414, 'rollout_depth': 60, 'trials': 3},
+    19: {'iterations': 10000, 'exploration': 1.414, 'rollout_depth': 80, 'trials': 3},
 }
 
 
@@ -69,17 +69,8 @@ def get_system_info() -> Dict:
     return info
 
 
-def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> Dict:
-    """
-    Run benchmark for a single board size
-
-    Returns:
-        dict with timing and power data
-    """
-    config = BENCHMARK_CONFIG[board_size]
-
-    print(f"\n  Running {board_size}×{board_size} board ({config['iterations']} iterations)...")
-
+def run_single_trial(board_size: int, config: Dict, power_monitor: PowerMonitor) -> Dict:
+    """Run a single trial for a board size"""
     # Start power measurement
     power_start = power_monitor.start_measurement()
     time_start = time.perf_counter()
@@ -96,35 +87,81 @@ def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> Dict:
     elapsed_time = time.perf_counter() - time_start
     power_result = power_monitor.stop_measurement(power_start, elapsed_time)
 
-    # Combine results
+    return {'mcts': result, 'power': power_result, 'time': elapsed_time}
+
+
+def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> Dict:
+    """
+    Run benchmark for a single board size with multiple trials
+
+    Returns:
+        dict with timing and power data (averaged across trials)
+    """
+    config = BENCHMARK_CONFIG[board_size]
+    num_trials = config.get('trials', 3)
+
+    print(f"\n  Running {board_size}×{board_size} board ({config['iterations']} iterations, {num_trials} trials)...")
+
+    # Run multiple trials
+    trials = []
+    for trial_num in range(num_trials):
+        print(f"    Trial {trial_num + 1}/{num_trials}...", end=' ', flush=True)
+        trial_result = run_single_trial(board_size, config, power_monitor)
+        trials.append(trial_result)
+        print(f"{trial_result['mcts']['total_time_ms']:.1f} ms")
+
+    # Calculate statistics across trials
+    import statistics
+
+    total_latencies = [t['mcts']['total_time_ms'] for t in trials]
+    total_powers = [t['power'].get('power_mw', 0) for t in trials]
+    total_energies = [t['power'].get('energy_uj', 0) for t in trials]
+
+    avg_latency = statistics.mean(total_latencies)
+    std_latency = statistics.stdev(total_latencies) if len(total_latencies) > 1 else 0
+    avg_power = statistics.mean(total_powers)
+    std_power = statistics.stdev(total_powers) if len(total_powers) > 1 else 0
+    avg_energy = statistics.mean(total_energies)
+    std_energy = statistics.stdev(total_energies) if len(total_energies) > 1 else 0
+
+    # Combine results (using averages)
     output = {
         'board_size': f'{board_size}x{board_size}',
         'num_positions': board_size ** 2,
         'iterations': config['iterations'],
-        'total_latency_ms': result['total_time_ms'],
-        'total_power_mw': power_result.get('power_mw', 0),
-        'total_energy_uj': power_result.get('energy_uj', 0),
-        'power_method': power_result.get('method', 'unknown'),
-        'tree_size': result['tree_size']
+        'num_trials': num_trials,
+        'total_latency_ms': avg_latency,
+        'total_latency_std_ms': std_latency,
+        'total_power_mw': avg_power,
+        'total_power_std_mw': std_power,
+        'total_energy_uj': avg_energy,
+        'total_energy_std_uj': std_energy,
+        'power_method': trials[0]['power'].get('method', 'unknown'),
+        'tree_size': statistics.mean([t['mcts']['tree_size'] for t in trials])
     }
 
-    # Add per-phase data
+    # Add per-phase data (averaged across trials)
     for phase in ['selection', 'expansion', 'simulation', 'backpropagation']:
-        phase_time_ms = result['phase_times_ms'][phase]
-        phase_percent = result['phase_percentages'][phase]
+        phase_times = [t['mcts']['phase_times_ms'][phase] for t in trials]
+        phase_percents = [t['mcts']['phase_percentages'][phase] for t in trials]
+
+        avg_phase_time = statistics.mean(phase_times)
+        std_phase_time = statistics.stdev(phase_times) if len(phase_times) > 1 else 0
+        avg_phase_percent = statistics.mean(phase_percents)
 
         # Estimate phase power (proportional to time)
-        phase_power = output['total_power_mw'] * (phase_percent / 100)
-        phase_energy = output['total_energy_uj'] * (phase_percent / 100)
+        phase_power = avg_power * (avg_phase_percent / 100)
+        phase_energy = avg_energy * (avg_phase_percent / 100)
 
-        output[f'{phase}_latency_ms'] = phase_time_ms
+        output[f'{phase}_latency_ms'] = avg_phase_time
+        output[f'{phase}_latency_std_ms'] = std_phase_time
         output[f'{phase}_power_mw'] = phase_power
         output[f'{phase}_energy_uj'] = phase_energy
-        output[f'{phase}_percent'] = phase_percent
+        output[f'{phase}_percent'] = avg_phase_percent
 
-    print(f"    Total: {output['total_latency_ms']:.1f} ms, "
-          f"{output['total_power_mw']:.1f} mW, "
-          f"{output['total_energy_uj']:.1f} µJ")
+    print(f"    Average: {output['total_latency_ms']:.1f} ± {output['total_latency_std_ms']:.1f} ms, "
+          f"{output['total_power_mw']:.1f} ± {output['total_power_std_mw']:.1f} mW, "
+          f"{output['total_energy_uj']:.1f} ± {output['total_energy_std_uj']:.1f} µJ")
 
     return output
 
@@ -135,12 +172,13 @@ def save_results(results: List[Dict], output_file: str, system_info: Dict):
     # Prepare CSV header
     fieldnames = [
         'timestamp', 'hostname', 'processor', 'cpu_count', 'power_method',
-        'board_size', 'num_positions', 'iterations',
-        'total_latency_ms', 'total_power_mw', 'total_energy_uj', 'tree_size',
-        'selection_latency_ms', 'selection_power_mw', 'selection_energy_uj', 'selection_percent',
-        'expansion_latency_ms', 'expansion_power_mw', 'expansion_energy_uj', 'expansion_percent',
-        'simulation_latency_ms', 'simulation_power_mw', 'simulation_energy_uj', 'simulation_percent',
-        'backpropagation_latency_ms', 'backpropagation_power_mw', 'backpropagation_energy_uj', 'backpropagation_percent'
+        'board_size', 'num_positions', 'iterations', 'num_trials',
+        'total_latency_ms', 'total_latency_std_ms', 'total_power_mw', 'total_power_std_mw',
+        'total_energy_uj', 'total_energy_std_uj', 'tree_size',
+        'selection_latency_ms', 'selection_latency_std_ms', 'selection_power_mw', 'selection_energy_uj', 'selection_percent',
+        'expansion_latency_ms', 'expansion_latency_std_ms', 'expansion_power_mw', 'expansion_energy_uj', 'expansion_percent',
+        'simulation_latency_ms', 'simulation_latency_std_ms', 'simulation_power_mw', 'simulation_energy_uj', 'simulation_percent',
+        'backpropagation_latency_ms', 'backpropagation_latency_std_ms', 'backpropagation_power_mw', 'backpropagation_energy_uj', 'backpropagation_percent'
     ]
 
     # Add timestamp and system info to each result

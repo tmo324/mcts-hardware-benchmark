@@ -47,16 +47,20 @@ git push
 
 ## Board Size Configurations
 
-The benchmark uses **Medium play strength** settings matching the ReasonCore SST simulations:
+The benchmark uses **Medium play strength** settings matching the ReasonCore SST simulations.
 
-| Board | Iterations | Exploration C | Rollout Depth | Expected Latency (ReasonCore) |
-|-------|------------|---------------|---------------|-------------------------------|
-| 2×2   | 200        | 1.414         | 10            | 20 ms                         |
-| 3×3   | 500        | 1.414         | 15            | 50 ms                         |
-| 5×5   | 1,000      | 1.414         | 25            | 100 ms                        |
-| 9×9   | 5,000      | 1.414         | 40            | 625 ms                        |
-| 13×13 | 7,500      | 1.414         | 60            | 1,350 ms                      |
-| 19×19 | 10,000     | 1.414         | 80            | 1,680 ms                      |
+**Multiple trials** are run for each board size to compute statistical confidence:
+
+| Board | Iterations | Trials | Exploration C | Rollout Depth | Expected Latency (ReasonCore) |
+|-------|------------|--------|---------------|---------------|-------------------------------|
+| 2×2   | 200        | 5      | 1.414         | 10            | 20 ms                         |
+| 3×3   | 500        | 5      | 1.414         | 15            | 50 ms                         |
+| 5×5   | 1,000      | 5      | 1.414         | 25            | 100 ms                        |
+| 9×9   | 5,000      | 3      | 1.414         | 40            | 625 ms                        |
+| 13×13 | 7,500      | 3      | 1.414         | 60            | 1,350 ms                      |
+| 19×19 | 10,000     | 3      | 1.414         | 80            | 1,680 ms                      |
+
+Results include **mean ± std** for all metrics (latency, power, energy).
 
 ## Output Format
 
@@ -66,11 +70,13 @@ The CSV output contains:
 - `timestamp`, `hostname`, `processor`, `cpu_count`, `power_method`
 
 **Per-Board Results**:
-- `board_size`, `num_positions`, `iterations`
-- `total_latency_ms`, `total_power_mw`, `total_energy_uj`
+- `board_size`, `num_positions`, `iterations`, `num_trials`
+- `total_latency_ms`, `total_latency_std_ms`: Latency (mean ± std)
+- `total_power_mw`, `total_power_std_mw`: Power (mean ± std)
+- `total_energy_uj`, `total_energy_std_uj`: Energy (mean ± std)
 
 **Per-Phase Breakdown** (Selection, Expansion, Simulation, Backpropagation):
-- `{phase}_latency_ms`: Time spent in phase
+- `{phase}_latency_ms`, `{phase}_latency_std_ms`: Time spent in phase (mean ± std)
 - `{phase}_power_mw`: Estimated power for phase
 - `{phase}_energy_uj`: Estimated energy for phase
 - `{phase}_percent`: Percentage of total time
