@@ -189,7 +189,7 @@ def save_results(results: List[Dict], output_file: str, system_info: Dict):
         writer.writeheader()
         writer.writerows(results)
 
-    print(f"\n✅ Results saved to: {output_file}")
+    print(f"\n[OK] Results saved to: {output_file}")
 
 
 def main():
@@ -222,7 +222,7 @@ def main():
             board_results = run_single_benchmark(board_size, power_monitor)
             results.extend(board_results)  # Flatten: add all trials to results
         except Exception as e:
-            print(f"  ❌ Error on {board_size}×{board_size}: {e}")
+            print(f"  [ERROR] Error on {board_size}x{board_size}: {e}")
 
     # Save results
     output_dir = 'results'
@@ -262,8 +262,8 @@ def main():
               f"{avg_eng:>10.1f} µJ")
 
     print("\n" + "=" * 70)
-    print("✅ Benchmark complete!")
-    print(f"📊 Results: {output_file}")
+    print("[OK] Benchmark complete!")
+    print(f"Results: {output_file}")
     print("\nNext steps:")
     print("  1. Commit and push results: git add results/ && git commit -m 'Add benchmark results'")
     print("  2. Run on other machines (CPU/GPU) and push their results")
