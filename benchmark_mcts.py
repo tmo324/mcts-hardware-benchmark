@@ -90,12 +90,12 @@ def run_single_trial(board_size: int, config: Dict, power_monitor: PowerMonitor)
     return {'mcts': result, 'power': power_result, 'time': elapsed_time}
 
 
-def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> Dict:
+def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> List[Dict]:
     """
     Run benchmark for a single board size with multiple trials
 
     Returns:
-        dict with timing and power data (averaged across trials)
+        list of dicts, one per trial with timing and power data
     """
     config = BENCHMARK_CONFIG[board_size]
     num_trials = config.get('trials', 3)
@@ -103,6 +103,7 @@ def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> Dict:
     print(f"\n  Running {board_size}×{board_size} board ({config['iterations']} iterations, {num_trials} trials)...")
 
     # Run multiple trials
+    trial_outputs = []
     trials = []
     for trial_num in range(num_trials):
         print(f"    Trial {trial_num + 1}/{num_trials}...", end=' ', flush=True)
@@ -110,7 +111,36 @@ def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> Dict:
         trials.append(trial_result)
         print(f"{trial_result['mcts']['total_time_ms']:.1f} ms")
 
-    # Calculate statistics across trials
+        # Create output for this individual trial
+        output = {
+            'board_size': f'{board_size}x{board_size}',
+            'num_positions': board_size ** 2,
+            'iterations': config['iterations'],
+            'trial_num': trial_num + 1,
+            'total_latency_ms': trial_result['mcts']['total_time_ms'],
+            'total_power_mw': trial_result['power'].get('power_mw', 0),
+            'total_energy_uj': trial_result['power'].get('energy_uj', 0),
+            'power_method': trial_result['power'].get('method', 'unknown'),
+            'tree_size': trial_result['mcts']['tree_size']
+        }
+
+        # Add per-phase data
+        for phase in ['selection', 'expansion', 'simulation', 'backpropagation']:
+            phase_time_ms = trial_result['mcts']['phase_times_ms'][phase]
+            phase_percent = trial_result['mcts']['phase_percentages'][phase]
+
+            # Estimate phase power (proportional to time)
+            phase_power = output['total_power_mw'] * (phase_percent / 100)
+            phase_energy = output['total_energy_uj'] * (phase_percent / 100)
+
+            output[f'{phase}_latency_ms'] = phase_time_ms
+            output[f'{phase}_power_mw'] = phase_power
+            output[f'{phase}_energy_uj'] = phase_energy
+            output[f'{phase}_percent'] = phase_percent
+
+        trial_outputs.append(output)
+
+    # Calculate and print statistics (for display only)
     import statistics
 
     total_latencies = [t['mcts']['total_time_ms'] for t in trials]
@@ -124,46 +154,11 @@ def run_single_benchmark(board_size: int, power_monitor: PowerMonitor) -> Dict:
     avg_energy = statistics.mean(total_energies)
     std_energy = statistics.stdev(total_energies) if len(total_energies) > 1 else 0
 
-    # Combine results (using averages)
-    output = {
-        'board_size': f'{board_size}x{board_size}',
-        'num_positions': board_size ** 2,
-        'iterations': config['iterations'],
-        'num_trials': num_trials,
-        'total_latency_ms': avg_latency,
-        'total_latency_std_ms': std_latency,
-        'total_power_mw': avg_power,
-        'total_power_std_mw': std_power,
-        'total_energy_uj': avg_energy,
-        'total_energy_std_uj': std_energy,
-        'power_method': trials[0]['power'].get('method', 'unknown'),
-        'tree_size': statistics.mean([t['mcts']['tree_size'] for t in trials])
-    }
+    print(f"    Average: {avg_latency:.1f} ± {std_latency:.1f} ms, "
+          f"{avg_power:.1f} ± {std_power:.1f} mW, "
+          f"{avg_energy:.1f} ± {std_energy:.1f} µJ")
 
-    # Add per-phase data (averaged across trials)
-    for phase in ['selection', 'expansion', 'simulation', 'backpropagation']:
-        phase_times = [t['mcts']['phase_times_ms'][phase] for t in trials]
-        phase_percents = [t['mcts']['phase_percentages'][phase] for t in trials]
-
-        avg_phase_time = statistics.mean(phase_times)
-        std_phase_time = statistics.stdev(phase_times) if len(phase_times) > 1 else 0
-        avg_phase_percent = statistics.mean(phase_percents)
-
-        # Estimate phase power (proportional to time)
-        phase_power = avg_power * (avg_phase_percent / 100)
-        phase_energy = avg_energy * (avg_phase_percent / 100)
-
-        output[f'{phase}_latency_ms'] = avg_phase_time
-        output[f'{phase}_latency_std_ms'] = std_phase_time
-        output[f'{phase}_power_mw'] = phase_power
-        output[f'{phase}_energy_uj'] = phase_energy
-        output[f'{phase}_percent'] = avg_phase_percent
-
-    print(f"    Average: {output['total_latency_ms']:.1f} ± {output['total_latency_std_ms']:.1f} ms, "
-          f"{output['total_power_mw']:.1f} ± {output['total_power_std_mw']:.1f} mW, "
-          f"{output['total_energy_uj']:.1f} ± {output['total_energy_std_uj']:.1f} µJ")
-
-    return output
+    return trial_outputs
 
 
 def save_results(results: List[Dict], output_file: str, system_info: Dict):
@@ -172,13 +167,12 @@ def save_results(results: List[Dict], output_file: str, system_info: Dict):
     # Prepare CSV header
     fieldnames = [
         'timestamp', 'hostname', 'processor', 'cpu_count', 'power_method',
-        'board_size', 'num_positions', 'iterations', 'num_trials',
-        'total_latency_ms', 'total_latency_std_ms', 'total_power_mw', 'total_power_std_mw',
-        'total_energy_uj', 'total_energy_std_uj', 'tree_size',
-        'selection_latency_ms', 'selection_latency_std_ms', 'selection_power_mw', 'selection_energy_uj', 'selection_percent',
-        'expansion_latency_ms', 'expansion_latency_std_ms', 'expansion_power_mw', 'expansion_energy_uj', 'expansion_percent',
-        'simulation_latency_ms', 'simulation_latency_std_ms', 'simulation_power_mw', 'simulation_energy_uj', 'simulation_percent',
-        'backpropagation_latency_ms', 'backpropagation_latency_std_ms', 'backpropagation_power_mw', 'backpropagation_energy_uj', 'backpropagation_percent'
+        'board_size', 'num_positions', 'iterations', 'trial_num',
+        'total_latency_ms', 'total_power_mw', 'total_energy_uj', 'tree_size',
+        'selection_latency_ms', 'selection_power_mw', 'selection_energy_uj', 'selection_percent',
+        'expansion_latency_ms', 'expansion_power_mw', 'expansion_energy_uj', 'expansion_percent',
+        'simulation_latency_ms', 'simulation_power_mw', 'simulation_energy_uj', 'simulation_percent',
+        'backpropagation_latency_ms', 'backpropagation_power_mw', 'backpropagation_energy_uj', 'backpropagation_percent'
     ]
 
     # Add timestamp and system info to each result
@@ -225,8 +219,8 @@ def main():
     results = []
     for board_size in sorted(BENCHMARK_CONFIG.keys()):
         try:
-            result = run_single_benchmark(board_size, power_monitor)
-            results.append(result)
+            board_results = run_single_benchmark(board_size, power_monitor)
+            results.extend(board_results)  # Flatten: add all trials to results
         except Exception as e:
             print(f"  ❌ Error on {board_size}×{board_size}: {e}")
 
@@ -241,17 +235,31 @@ def main():
 
     save_results(results, output_file, system_info)
 
-    # Print summary
+    # Print summary (grouped by board size, showing averages)
     print("\n" + "=" * 70)
     print("BENCHMARK SUMMARY")
     print("=" * 70)
-    print(f"{'Board':<10} {'Latency':<15} {'Power':<15} {'Energy':<15}")
+    print(f"{'Board':<10} {'Trials':<8} {'Avg Latency':<15} {'Avg Power':<15} {'Avg Energy':<15}")
     print("-" * 70)
+
+    import statistics
+    # Group results by board size
+    board_groups = {}
     for result in results:
-        print(f"{result['board_size']:<10} "
-              f"{result['total_latency_ms']:>10.1f} ms   "
-              f"{result['total_power_mw']:>10.1f} mW   "
-              f"{result['total_energy_uj']:>10.1f} µJ")
+        board = result['board_size']
+        if board not in board_groups:
+            board_groups[board] = []
+        board_groups[board].append(result)
+
+    for board in sorted(board_groups.keys(), key=lambda x: int(x.split('x')[0])):
+        trials = board_groups[board]
+        avg_lat = statistics.mean([t['total_latency_ms'] for t in trials])
+        avg_pow = statistics.mean([t['total_power_mw'] for t in trials])
+        avg_eng = statistics.mean([t['total_energy_uj'] for t in trials])
+        print(f"{board:<10} {len(trials):<8} "
+              f"{avg_lat:>10.1f} ms   "
+              f"{avg_pow:>10.1f} mW   "
+              f"{avg_eng:>10.1f} µJ")
 
     print("\n" + "=" * 70)
     print("✅ Benchmark complete!")
