@@ -33,9 +33,9 @@ BENCHMARK_CONFIG = {
     2: {'iterations': 200, 'exploration': 1.414, 'rollout_depth': 10, 'trials': 5},
     3: {'iterations': 500, 'exploration': 1.414, 'rollout_depth': 15, 'trials': 5},
     5: {'iterations': 1000, 'exploration': 1.414, 'rollout_depth': 25, 'trials': 5},
-    9: {'iterations': 5000, 'exploration': 1.414, 'rollout_depth': 40, 'trials': 3},
-    13: {'iterations': 7500, 'exploration': 1.414, 'rollout_depth': 60, 'trials': 3},
-    19: {'iterations': 10000, 'exploration': 1.414, 'rollout_depth': 80, 'trials': 3},
+    9: {'iterations': 5000, 'exploration': 1.414, 'rollout_depth': 40, 'trials': 5},
+    13: {'iterations': 7500, 'exploration': 1.414, 'rollout_depth': 60, 'trials': 5},
+    19: {'iterations': 10000, 'exploration': 1.414, 'rollout_depth': 80, 'trials': 5},
 }
 
 
