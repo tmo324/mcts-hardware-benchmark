@@ -25,8 +25,8 @@ from datetime import datetime
 from typing import Dict, List
 
 # Import our modules
-from mcts_core import run_benchmark
-from power_monitor import PowerMonitor
+from .mcts_core import run_benchmark
+from .power_monitor import PowerMonitor
 
 # Medium play strength configuration (matching SST)
 BENCHMARK_CONFIG = {
