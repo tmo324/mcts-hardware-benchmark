@@ -162,14 +162,29 @@ class PowerMonitor:
     def _read_gpu_power(self) -> Dict:
         """Read GPU power via nvidia-smi"""
         try:
-            cmd = ['nvidia-smi', '--query-gpu=power.draw',
+            # Determine which GPU to query based on CUDA_VISIBLE_DEVICES
+            gpu_id = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
+            # If multiple GPUs specified, use the first one
+            if ',' in gpu_id:
+                gpu_id = gpu_id.split(',')[0]
+
+            cmd = ['nvidia-smi', f'-i', gpu_id, '--query-gpu=power.draw',
                    '--format=csv,noheader,nounits']
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 power_w = float(result.stdout.strip())
                 return {'power_w': power_w, 'timestamp': time.time()}
-        except:
-            pass
+        except Exception as e:
+            # If CUDA_VISIBLE_DEVICES is set but fails, try default GPU 0
+            try:
+                cmd = ['nvidia-smi', '-i', '0', '--query-gpu=power.draw',
+                       '--format=csv,noheader,nounits']
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    power_w = float(result.stdout.strip())
+                    return {'power_w': power_w, 'timestamp': time.time()}
+            except:
+                pass
         return {'power_w': 0, 'timestamp': time.time()}
 
     def _calculate_gpu_energy(self, start: Dict, end: Dict, elapsed: float) -> Dict:
