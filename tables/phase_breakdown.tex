@@ -1,0 +1,17 @@
+\begin{table}[h]
+\centering
+\caption{Phase Breakdown - 9x9 Board (5000 iterations)}
+\begin{tabular}{l|cc|cc}
+\hline
+ & \multicolumn{2}{c|}{Latency (ms)} & \multicolumn{2}{c}{Energy (mJ)} \\
+Phase & CPU & GPU & CPU & GPU \\
+\hline
+Selection & 61.42 $\pm$ 0.60 & 204.36 $\pm$ 1.39 & 3419.10 $\pm$ 44.60 & 23246.47 $\pm$ 168.70 \\
+Expansion & 56.18 $\pm$ 0.83 & 1504.99 $\pm$ 2.59 & 3127.55 $\pm$ 50.25 & 171196.57 $\pm$ 386.07 \\
+Rollout & 1929.29 $\pm$ 33.37 & 285.18 $\pm$ 0.80 & 107402.46 $\pm$ 2024.91 & 32439.57 $\pm$ 115.15 \\
+Backpropagation & 2.28 $\pm$ 0.03 & 245.70 $\pm$ 1.02 & 127.10 $\pm$ 1.55 & 27949.51 $\pm$ 118.15 \\
+\hline
+Total & 2052.44 $\pm$ 34.01 & 2247.56 $\pm$ 4.41 & 114076.21 $\pm$ 2076.92 & 255665.51 $\pm$ 660.34 \\
+\hline
+\end{tabular}
+\end{table}
