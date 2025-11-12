@@ -6,39 +6,64 @@ Designed to provide fair comparisons against the **ReasonCore MCTS accelerator**
 
 ## Features
 
-- ✅ **CPU & GPU Support**: Python (CPU) and Numba CUDA (GPU) implementations
+- ✅ **CPU & GPU Support**: Optimized C++ (CPU) and Numba CUDA (GPU) implementations
+- ✅ **High-Performance CPU Baseline**: C++17 with -O3 optimization for fair hardware comparison
 - ✅ **Dual-Mode GPU Benchmarking**:
   - **Fair Comparison Mode**: Single-tree, sequential playouts (matches CPU algorithm exactly)
   - **Capability Mode**: Multi-tree, parallel playouts (demonstrates maximum GPU throughput)
-- ✅ **4-Phase Instrumentation**: Measures Selection, Expansion, Simulation, and Backpropagation separately
 - ✅ **Cross-Platform Power Measurement**: Intelligent detection of best available method
-  - Linux Intel CPU: RAPL (accurate hardware counters)
-  - Linux AMD CPU: TDP-based estimation using `psutil`
+  - Linux Intel CPU: RAPL (accurate hardware counters, ±1-5%)
+  - Linux AMD CPU: TDP-based estimation
   - NVIDIA GPU: NVML power readings
-  - Fallback: CPU usage estimation
-- ✅ **SST-Matched Configuration**: Uses same iteration counts as ReasonCore SST simulations (Medium play strength)
-- ✅ **Publication-Ready Tables**: Auto-generate Markdown/LaTeX tables for research papers
-- ✅ **CSV Output**: Easy to analyze and compare across machines
+- ✅ **Publication-Ready Output**: CSV format with detailed per-trial statistics
+- ✅ **Board Size Scaling**: 2×2 to 19×19 Go boards with configurable iterations
 
 ## Quick Start
 
 ### 1. Installation
 
 ```bash
-git clone https://github.com/yourusername/mcts-hardware-benchmark.git
+git clone https://github.com/tmo324/mcts-hardware-benchmark.git
 cd mcts-hardware-benchmark
+```
+
+**For CPU benchmarks**:
+```bash
+# Compile C++ benchmark (requires g++ with C++17 support)
+make
+```
+
+**For GPU benchmarks**:
+```bash
+# Install Python dependencies
 pip install -r requirements.txt
 ```
 
 ### 2. Run Benchmarks
 
-#### CPU Benchmark (Python)
+#### CPU Benchmark (C++)
 
+**Quick test (single board size)**:
 ```bash
-python main_cpu.py
+./mcts_cpu_benchmark --board-size 9 --iterations 5000
 ```
 
-Outputs: `results/mcts_benchmark_<hostname>_<timestamp>.csv`
+**Complete benchmark (all board sizes)**:
+```bash
+./mcts_cpu_benchmark --all-sizes --iterations 5000 --trials 5
+# Or use convenience script:
+./run_all_benchmarks.sh
+```
+
+**Output**: `results/cpu_cpp_benchmark_YYYYMMDD_HHMMSS.csv`
+
+**Options**:
+- `--board-size N`: Run single board size (2-19)
+- `--all-sizes`: Run all board sizes (2,3,5,9,13,19)
+- `--iterations N`: MCTS iterations per trial (default: 1000)
+- `--trials N`: Number of trials per board size (default: 5)
+- `--tdp W`: CPU TDP in watts (default: 55.3W for Xeon 8462Y+)
+- `--help`: Show help message
 
 #### GPU Benchmark - Fair Comparison Mode
 
@@ -102,26 +127,30 @@ Results include **mean ± std** for all metrics (latency, power, energy).
 
 ## Output Format
 
-The CSV output contains **one row per trial** (not aggregated):
+### CPU Benchmark (C++) CSV Output
 
-**System Info**:
-- `timestamp`, `hostname`, `processor`, `cpu_count`, `power_method`
+The CSV output contains **one row per trial** with the following columns:
 
-**Per-Trial Results**:
-- `board_size`, `num_positions`, `iterations`, `trial_num`
-- **GPU-specific** (only in GPU CSVs): `n_trees`, `n_playouts`, `variant`
-- `total_latency_ms`: Total MCTS search time
-- `total_power_mw`: Average power during search
-- `total_energy_uj`: Total energy consumed
-- `tree_size`: Final MCTS tree size
+- `board_size`: Board dimensions (2-19)
+- `trial`: Trial number (1-N)
+- `iterations`: MCTS iterations performed
+- `elapsed_ms`: Total execution time (milliseconds)
+- `throughput_iter_s`: Iterations per second
+- `latency_ms_iter`: Milliseconds per iteration
+- `energy_j`: Total energy consumed (joules)
+- `energy_per_iter_uj`: Energy per iteration (microjoules)
+- `power_w`: Average power (watts)
+- `method`: Energy measurement method (RAPL or TDP)
 
-**Per-Phase Breakdown** (Selection, Expansion, Simulation, Backpropagation):
-- `{phase}_latency_ms`: Time spent in phase
-- `{phase}_power_mw`: Estimated power for phase
-- `{phase}_energy_uj`: Estimated energy for phase
-- `{phase}_percent`: Percentage of total time
+Example row:
+```
+board_size,trial,iterations,elapsed_ms,throughput_iter_s,latency_ms_iter,energy_j,energy_per_iter_uj,power_w,method
+9,1,5000,14.85,336590.45,0.00297,1.644,328.86,110.69,RAPL
+```
 
-**Note**: Multiple trials per board size are stored as separate rows. Use `utils/generate_tables.py` to aggregate statistics.
+### GPU Benchmark (Python) CSV Output
+
+The GPU CSV output includes additional GPU-specific metrics. See Python implementation documentation for details.
 
 ## Table Generation
 
@@ -189,33 +218,36 @@ All values shown as `mean ± std` across trials.
 
 ```
 mcts-hardware-benchmark/
-├── main_cpu.py                    # Entry point: CPU benchmark
-├── main_gpu_fair.py               # Entry point: GPU fair comparison (1T×1P)
-├── main_gpu_capability.py         # Entry point: GPU max capability (8T×128P)
+├── mcts_cpu_benchmark.cpp         # CPU benchmark (C++, single-file implementation)
+├── Makefile                       # Build configuration
+├── run_all_benchmarks.sh          # Convenience script for all board sizes
 │
-├── mcts_cpu/                      # CPU implementation
-│   ├── __init__.py
-│   ├── benchmark.py               # Benchmark orchestration
-│   ├── mcts_core.py               # 4-phase MCTS algorithm
-│   └── power_monitor.py           # Power monitoring (RAPL/psutil/NVML)
+├── main_gpu_fair.py               # GPU fair comparison mode (1T×1P)
+├── main_gpu_capability.py         # GPU max capability mode (8T×128P)
+│
+├── archive_python/                # Archived Python CPU implementation
+│   ├── main_cpu.py
+│   ├── main_cpu_psutil.py
+│   └── mcts_cpu/
 │
 ├── mcts_gpu/                      # GPU implementation (mcts_numba_cuda)
 │   ├── __init__.py
 │   ├── benchmark.py               # GPU benchmark wrapper
 │   ├── mctsnc.py                  # Core MCTS-NC engine
-│   ├── mctsnc_game_mechanics.py   # CUDA device functions (Simplified Go)
+│   ├── mctsnc_game_mechanics.py   # CUDA device functions
 │   ├── utils.py                   # Helper functions
 │   └── README.md                  # GPU documentation
 │
 ├── utils/                         # Analysis utilities
 │   ├── __init__.py
-│   ├── generate_tables.py         # Publication table generator
+│   ├── generate_tables.py         # Table generator (for GPU results)
 │   └── compare_to_sst.py          # SST comparison script
 │
 ├── results/                       # Benchmark CSV outputs
-│   └── *.csv
+│   ├── cpu_cpp_benchmark_*.csv    # C++ CPU results
+│   └── mcts_benchmark_gpu_*.csv   # GPU results
 │
-├── requirements.txt               # Python dependencies
+├── requirements.txt               # Python dependencies (GPU only)
 └── README.md                      # This file
 ```
 
@@ -244,80 +276,123 @@ The benchmark automatically selects the best available method:
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/mcts-hardware-benchmark.git
+git clone https://github.com/tmo324/mcts-hardware-benchmark.git
 cd mcts-hardware-benchmark
-pip install -r requirements.txt
 
-# 2. Run CPU benchmark
-python main_cpu.py
+# 2. Run CPU benchmark (C++)
+make                              # Compile
+./mcts_cpu_benchmark --all-sizes  # Run all board sizes
 
 # 3. Run GPU benchmarks (on GPU machine)
-module load cuda  # HPC systems
-python main_gpu_fair.py          # Fair comparison
+pip install -r requirements.txt   # Install Python dependencies
+module load cuda                  # HPC systems
+python main_gpu_fair.py           # Fair comparison
 python main_gpu_capability.py     # Maximum throughput
 
-# 4. Generate publication tables
-python utils/generate_tables.py --auto-find --board-size 9x9
+# 4. Analyze results
+cat results/cpu_cpp_benchmark_*.csv      # View CPU results
+cat results/mcts_benchmark_gpu_*.csv     # View GPU results
 
-# 5. Check tables
-cat tables/phase_breakdown.md
-cat tables/scalability_analysis.md
-
-# 6. Use LaTeX tables in paper
-cat tables/phase_breakdown.tex
-cat tables/scalability_analysis.tex
+# 5. Compare to hardware accelerator
+python utils/compare_to_sst.py --cpu-file results/cpu_cpp_benchmark_*.csv
 ```
 
 ### Multi-Machine Comparison
 
 **Machine 1 (Intel Xeon CPU)**:
 ```bash
-git clone https://github.com/yourusername/mcts-hardware-benchmark.git
+git clone https://github.com/tmo324/mcts-hardware-benchmark.git
 cd mcts-hardware-benchmark
-pip install -r requirements.txt
-python main_cpu.py
-git add results/ && git commit -m "Results: Intel Xeon Platinum 8280"
+make                                                # Compile C++ benchmark
+./mcts_cpu_benchmark --all-sizes --trials 5         # Run all board sizes
+git add results/ && git commit -m "Results: Intel Xeon Platinum 8462Y+"
 git push
 ```
 
-**Machine 2 (NVIDIA A100 GPU)**:
+**Machine 2 (NVIDIA H100 GPU)**:
 ```bash
-git pull  # Get latest code
-module load cuda
-python main_gpu_fair.py           # Fair comparison
-python main_gpu_capability.py      # Max GPU throughput
-git add results/ && git commit -m "Results: NVIDIA A100 GPU (fair + capability)"
+git pull                          # Get latest code
+pip install -r requirements.txt   # Install Python dependencies
+module load cuda                  # HPC systems
+python main_gpu_fair.py           # Fair comparison mode
+python main_gpu_capability.py     # Maximum capability mode
+git add results/ && git commit -m "Results: NVIDIA H100 GPU"
 git push
 ```
 
 **Local Analysis**:
 ```bash
-git pull  # Get all results
-python utils/generate_tables.py --auto-find
-# Now you have comparison tables in tables/
+git pull  # Get all results from both machines
+# Compare results manually or write custom analysis script
+cat results/cpu_cpp_benchmark_*.csv
+cat results/mcts_benchmark_gpu_*.csv
 ```
 
-## Comparing to ReasonCore
+## C++ Implementation Details
 
-To compare your results against ReasonCore SST simulations:
+The CPU benchmark is implemented in optimized C++17 with the following characteristics:
 
-1. Run this benchmark on your CPU/GPU
-2. Compare `total_energy_uj` values to ReasonCore's simulated energy
-3. Calculate speedup: `ReasonCore_latency / Your_latency`
-4. Calculate energy efficiency: `Your_energy / ReasonCore_energy`
+**Compilation**:
+- Compiler: g++ with `-std=c++17 -O3 -march=native -ffast-math`
+- Single-threaded execution (fair comparison)
+- No external dependencies (standard library only)
 
-Example for 5×5 board:
-- **ReasonCore (SST)**: 1.4 µJ, 100 ms (simulated)
-- **Your CPU**: 3,300 µJ, 150 ms (measured)
-- **Energy ratio**: 2,357× more energy
-- **Speedup**: 0.67× slower
+**Algorithm**:
+- Four-phase MCTS: Selection (UCB1), Expansion, Rollout, Backpropagation
+- Hash-based tree storage using `std::unordered_map`
+- Simplified Go rules (no capture detection, winner by stone count)
+
+**Energy Measurement**:
+- **Intel RAPL** (preferred): Reads `/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj`
+  - Accuracy: ±1-5% (hardware counters)
+  - Measures entire CPU package energy
+- **TDP Estimation** (fallback): `Energy = Power × Time` where Power = specified TDP
+  - Accuracy: ±20-30% (approximation)
+  - Use when RAPL is unavailable (AMD CPUs, no permissions)
+
+**Performance**:
+- Expected throughput: 15-20× faster than Python 3.11
+- Example (9×9 board): ~330,000 iterations/second on Xeon 8462Y+
+
+## Comparing to Hardware Accelerators
+
+Use the C++ baseline for fair comparison against custom hardware:
+
+**Example comparison (9×9 board)**:
+- **CPU (Xeon 8462Y+)**: 336k iter/s, 328 µJ/iter, 110W
+- **Custom Accelerator**: Compare your energy/latency measurements
+- **Energy efficiency gain**: `CPU_energy / Accelerator_energy`
+- **Throughput ratio**: `Accelerator_throughput / CPU_throughput`
 
 ## Troubleshooting
+
+### C++ Compilation Errors
+
+**Error: g++ not found**
+```bash
+# Ubuntu/Debian
+sudo apt install build-essential
+
+# CentOS/RHEL
+sudo yum install gcc-c++
+```
+
+**Error: C++17 not supported**
+Requires g++ 7.0+ or clang++ 5.0+. Update your compiler:
+```bash
+gcc --version  # Check version
+# If < 7.0, update compiler or use module system on HPC
+```
 
 ### Permission Denied (RAPL on Linux)
 
 ```bash
 sudo chmod -R a+r /sys/class/powercap/intel-rapl/
+```
+
+**Alternative**: Use TDP estimation with `--tdp` flag:
+```bash
+./mcts_cpu_benchmark --all-sizes --tdp 55.3
 ```
 
 ### GPU Not Detected
@@ -327,12 +402,16 @@ Check `nvidia-smi` is installed:
 nvidia-smi
 ```
 
-### Low Accuracy (psutil estimation)
+### Energy Measurements Show Zero
 
-This is expected for AMD CPUs. For better accuracy:
-- Use external power meter
-- Run on Intel CPU with RAPL
-- Manually calibrate TDP in `power_monitor.py`
+This happens when:
+1. Benchmark runs too fast (< 1ms)
+2. RAPL counter resolution insufficient
+
+**Solution**: Run more iterations:
+```bash
+./mcts_cpu_benchmark --board-size 9 --iterations 10000
+```
 
 ## Contributing
 
