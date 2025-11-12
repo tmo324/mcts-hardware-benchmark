@@ -727,17 +727,33 @@ int main(int argc, char** argv) {
                       << "Options:\n"
                       << "  --board-size N     Run single board size N×N (2-19)\n"
                       << "  --iterations N     Number of MCTS iterations (default: 1000)\n"
+                      << "                     Ignored when --all-sizes is used (auto per size)\n"
                       << "  --trials N         Number of trials per size (default: 5)\n"
-                      << "  --all-sizes        Run all board sizes (2,3,5,9,13,19)\n"
+                      << "  --all-sizes        Run all board sizes with standard iteration counts:\n"
+                      << "                       2×2:200, 3×3:500, 5×5:1K, 9×9:5K, 13×13:7.5K, 19×19:10K\n"
                       << "  --tdp W            CPU TDP in watts (default: 55.3)\n"
                       << "  --help             Show this help message\n\n"
                       << "Examples:\n"
                       << "  " << argv[0] << " --board-size 5 --iterations 1000\n"
                       << "  " << argv[0] << " --all-sizes\n"
+                      << "  " << argv[0] << " --all-sizes --trials 3\n"
                       << "  " << argv[0] << " --all-sizes --tdp 100\n";
             return 0;
         }
     }
+
+    // Helper function: Get standard iteration count for a board size
+    auto get_iterations_for_board = [](int size) -> int {
+        switch (size) {
+            case 2:  return 200;
+            case 3:  return 500;
+            case 5:  return 1000;
+            case 9:  return 5000;
+            case 13: return 7500;
+            case 19: return 10000;
+            default: return 1000;  // fallback
+        }
+    };
 
     // Determine board sizes to test
     std::vector<int> board_sizes;
@@ -758,7 +774,12 @@ int main(int argc, char** argv) {
     for (int size : board_sizes) {
         std::cout << size << "×" << size << " ";
     }
-    std::cout << "\nIterations: " << iterations << "\n";
+    std::cout << "\n";
+    if (all_sizes) {
+        std::cout << "Iterations: (auto per board size)\n";
+    } else {
+        std::cout << "Iterations: " << iterations << "\n";
+    }
     std::cout << "Trials: " << trials << "\n";
     std::cout << "CPU TDP: " << tdp << "W\n\n";
 
@@ -768,9 +789,13 @@ int main(int argc, char** argv) {
 
     // Run benchmarks
     for (int size : board_sizes) {
-        std::cout << "--- Testing " << size << "×" << size << " board ---" << std::endl;
+        // Use standard iterations for --all-sizes, otherwise use user-specified value
+        int size_iterations = all_sizes ? get_iterations_for_board(size) : iterations;
+
+        std::cout << "--- Testing " << size << "×" << size << " board ("
+                  << size_iterations << " iterations) ---" << std::endl;
         for (int trial = 1; trial <= trials; trial++) {
-            BenchmarkResult result = benchmark.run_trial(size, iterations, trial);
+            BenchmarkResult result = benchmark.run_trial(size, size_iterations, trial);
             all_results.push_back(result);
         }
         std::cout << std::endl;
