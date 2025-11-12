@@ -83,7 +83,10 @@ def run_single_trial_gpu(board_size: int, config: Dict, ai: MCTSNC, power_monito
 
     # Run MCTS search
     try:
-        actions_info, performance_info = ai.run(board, extra_info, turn)
+        best_action = ai.run(board, extra_info, turn)
+        # Get performance and actions info separately
+        performance_info = ai._make_performance_info()
+        actions_info = ai._make_actions_info_thrifty() if 'thrifty' in ai.variant else ai._make_actions_info_prodigal()
     except Exception as e:
         print(f"    Error during GPU MCTS: {e}")
         raise
@@ -185,7 +188,7 @@ def run_single_benchmark_gpu(board_size: int, power_monitor: PowerMonitor,
                 'total_power_mw': trial_result['power'].get('power_mw', 0),
                 'total_energy_uj': trial_result['power'].get('energy_uj', 0),
                 'power_method': trial_result['power'].get('method', 'unknown'),
-                'tree_size': perf['tree']['mean_size']
+                'tree_size': perf['trees']['mean_size']
             }
 
             # Add per-phase data
