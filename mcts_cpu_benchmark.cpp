@@ -420,13 +420,28 @@ public:
 // ENERGY MONITORING
 // ============================================================================
 
+// CPU usage tracking structure
+struct CPUStats {
+    long long user, nice, system, idle, iowait, irq, softirq, steal;
+
+    long long total() const {
+        return user + nice + system + idle + iowait + irq + softirq + steal;
+    }
+
+    long long active() const {
+        return user + nice + system + irq + softirq + steal;
+    }
+};
+
 class EnergyMonitor {
 private:
     bool rapl_available;
     long long start_energy_uj;
     double tdp_watts;
+    double idle_watts;  // Idle power consumption
     std::chrono::high_resolution_clock::time_point start_time;
     std::string energy_file;
+    CPUStats start_cpu_stats;
 
     bool check_rapl_available() {
         energy_file = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj";
@@ -443,13 +458,43 @@ private:
         return 0;
     }
 
+    CPUStats read_cpu_stats() {
+        CPUStats stats = {0, 0, 0, 0, 0, 0, 0, 0};
+        std::ifstream file("/proc/stat");
+        std::string line;
+
+        if (std::getline(file, line)) {
+            // Parse: cpu  user nice system idle iowait irq softirq steal
+            std::istringstream iss(line);
+            std::string cpu_label;
+            iss >> cpu_label >> stats.user >> stats.nice >> stats.system
+                >> stats.idle >> stats.iowait >> stats.irq >> stats.softirq >> stats.steal;
+        }
+
+        return stats;
+    }
+
+    double get_cpu_percent() {
+        CPUStats end_stats = read_cpu_stats();
+
+        long long total_delta = end_stats.total() - start_cpu_stats.total();
+        long long active_delta = end_stats.active() - start_cpu_stats.active();
+
+        if (total_delta == 0) {
+            return 0.0;  // Avoid division by zero
+        }
+
+        return 100.0 * active_delta / total_delta;
+    }
+
 public:
-    EnergyMonitor(double tdp = 55.3) : tdp_watts(tdp) {
+    EnergyMonitor(double tdp = 55.3, double idle = 20.0) : tdp_watts(tdp), idle_watts(idle) {
         rapl_available = check_rapl_available();
         if (rapl_available) {
             std::cout << "✓ Using Intel RAPL for accurate energy measurement" << std::endl;
         } else {
-            std::cout << "⚠ RAPL not available, using TDP estimation (" << tdp << "W)" << std::endl;
+            std::cout << "⚠ RAPL not available, using psutil-style estimation (TDP="
+                      << tdp << "W, Idle=" << idle << "W)" << std::endl;
         }
     }
 
@@ -457,6 +502,8 @@ public:
         start_time = std::chrono::high_resolution_clock::now();
         if (rapl_available) {
             start_energy_uj = read_energy_uj();
+        } else {
+            start_cpu_stats = read_cpu_stats();
         }
     }
 
@@ -472,15 +519,17 @@ public:
 
             return delta_uj / 1e6;  // Convert to joules
         } else {
-            // TDP estimation
+            // psutil-style estimation: Power = Idle + (TDP - Idle) × CPU%
             auto end_time = std::chrono::high_resolution_clock::now();
             double duration_s = std::chrono::duration<double>(end_time - start_time).count();
-            return tdp_watts * duration_s;
+            double cpu_percent = get_cpu_percent() / 100.0;  // Convert to 0-1 range
+            double avg_power = idle_watts + (tdp_watts - idle_watts) * cpu_percent;
+            return avg_power * duration_s;
         }
     }
 
     std::string get_method() const {
-        return rapl_available ? "RAPL" : "TDP";
+        return rapl_available ? "RAPL" : "psutil";
     }
 };
 
@@ -525,12 +574,13 @@ struct BenchmarkResult {
 class Benchmark {
 private:
     double cpu_tdp;
+    double cpu_idle;
     std::string hostname;
     std::string processor;
     int cpu_count;
 
 public:
-    Benchmark(double tdp = 55.3) : cpu_tdp(tdp) {
+    Benchmark(double tdp = 55.3, double idle = 20.0) : cpu_tdp(tdp), cpu_idle(idle) {
         hostname = get_hostname();
         processor = get_processor_name();
         cpu_count = get_cpu_count();
@@ -545,7 +595,7 @@ public:
     BenchmarkResult run_trial(int board_size, int iterations, int trial_num) {
         GameState initial_state(board_size);
         MCTSEngine engine(std::sqrt(2.0));
-        EnergyMonitor monitor(cpu_tdp);
+        EnergyMonitor monitor(cpu_tdp, cpu_idle);
 
         // Run MCTS search
         monitor.start();
@@ -704,6 +754,7 @@ int main(int argc, char** argv) {
     int iterations = 1000;
     int trials = 5;
     double tdp = 55.3;
+    double idle_power = 20.0;
     bool all_sizes = false;
 
     // Parse command-line arguments
@@ -717,6 +768,8 @@ int main(int argc, char** argv) {
             trials = std::stoi(argv[++i]);
         } else if (arg == "--tdp" && i + 1 < argc) {
             tdp = std::stod(argv[++i]);
+        } else if (arg == "--idle" && i + 1 < argc) {
+            idle_power = std::stod(argv[++i]);
         } else if (arg == "--all-sizes") {
             all_sizes = true;
         } else if (arg == "--help") {
@@ -732,12 +785,17 @@ int main(int argc, char** argv) {
                       << "  --all-sizes        Run all board sizes with standard iteration counts:\n"
                       << "                       2×2:200, 3×3:500, 5×5:1K, 9×9:5K, 13×13:7.5K, 19×19:10K\n"
                       << "  --tdp W            CPU TDP in watts (default: 55.3)\n"
+                      << "  --idle W           CPU idle power in watts (default: 20.0)\n"
+                      << "                     Used for psutil-style estimation when RAPL unavailable\n"
                       << "  --help             Show this help message\n\n"
+                      << "Power Measurement:\n"
+                      << "  - RAPL (Intel): Hardware counters (accurate)\n"
+                      << "  - psutil (fallback): Power = Idle + (TDP - Idle) × CPU%\n\n"
                       << "Examples:\n"
                       << "  " << argv[0] << " --board-size 5 --iterations 1000\n"
                       << "  " << argv[0] << " --all-sizes\n"
                       << "  " << argv[0] << " --all-sizes --trials 3\n"
-                      << "  " << argv[0] << " --all-sizes --tdp 100\n";
+                      << "  " << argv[0] << " --all-sizes --tdp 100 --idle 25\n";
             return 0;
         }
     }
@@ -781,10 +839,11 @@ int main(int argc, char** argv) {
         std::cout << "Iterations: " << iterations << "\n";
     }
     std::cout << "Trials: " << trials << "\n";
-    std::cout << "CPU TDP: " << tdp << "W\n\n";
+    std::cout << "CPU TDP: " << tdp << "W\n";
+    std::cout << "CPU Idle: " << idle_power << "W\n\n";
 
     // Initialize benchmark
-    Benchmark benchmark(tdp);
+    Benchmark benchmark(tdp, idle_power);
     std::vector<BenchmarkResult> all_results;
 
     // Run benchmarks
