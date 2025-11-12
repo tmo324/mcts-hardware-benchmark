@@ -208,9 +208,9 @@ def main():
     print(f"  CPU Cores: {system_info['cpu_count']}")
     print(f"  Memory: {system_info['memory_gb']} GB")
 
-    # Initialize power monitor
+    # Initialize power monitor (force CPU-only monitoring)
     print(f"\nInitializing power monitor...")
-    power_monitor = PowerMonitor()
+    power_monitor = PowerMonitor(force_cpu=True)
 
     # Run benchmarks for all board sizes
     print(f"\nRunning benchmarks...")

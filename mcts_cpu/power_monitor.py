@@ -28,8 +28,15 @@ except ImportError:
 class PowerMonitor:
     """Cross-platform power monitoring"""
 
-    def __init__(self):
+    def __init__(self, force_cpu=False):
+        """
+        Initialize PowerMonitor
+
+        Args:
+            force_cpu: If True, force CPU-only monitoring (skip GPU detection)
+        """
         self.platform = platform.system()
+        self.force_cpu = force_cpu
         self.method = self._detect_best_method()
         self.baseline_power = None
 
@@ -48,14 +55,18 @@ class PowerMonitor:
     def _detect_best_method(self) -> str:
         """Detect best available power measurement method"""
 
-        # Check for NVIDIA GPU first
-        if self._check_nvidia_gpu():
-            return 'nvidia-smi'
+        # If force_cpu is True, skip GPU detection
+        if not self.force_cpu:
+            # Check for NVIDIA GPU first
+            if self._check_nvidia_gpu():
+                return 'nvidia-smi'
 
         # Check for Intel RAPL (Linux only)
         if self.platform == 'Linux':
             if os.path.exists('/sys/class/powercap/intel-rapl'):
-                return 'rapl'
+                # Check if we can actually read RAPL files
+                if self._can_read_rapl():
+                    return 'rapl'
 
         # Fallback to psutil estimation
         if PSUTIL_AVAILABLE:
@@ -71,6 +82,22 @@ class PowerMonitor:
             return result.returncode == 0
         except:
             return False
+
+    def _can_read_rapl(self) -> bool:
+        """Check if we have permission to read RAPL energy files"""
+        rapl_base = '/sys/class/powercap/intel-rapl'
+        try:
+            for entry in os.listdir(rapl_base):
+                if entry.startswith('intel-rapl:'):
+                    energy_file = os.path.join(rapl_base, entry, 'energy_uj')
+                    if os.path.exists(energy_file):
+                        # Try to read the file
+                        with open(energy_file) as f:
+                            f.read()
+                        return True  # If we can read at least one, RAPL is accessible
+        except (OSError, PermissionError):
+            return False
+        return False
 
     def _init_rapl(self):
         """Initialize RAPL energy counters"""
