@@ -507,7 +507,7 @@ public:
         }
     }
 
-    double get_energy_joules() {
+    double get_energy_joules(double actual_duration_s = -1) {
         if (rapl_available) {
             long long end_energy_uj = read_energy_uj();
             long long delta_uj = end_energy_uj - start_energy_uj;
@@ -520,10 +520,25 @@ public:
             return delta_uj / 1e6;  // Convert to joules
         } else {
             // psutil-style estimation: Power = Idle + (TDP - Idle) × CPU%
-            auto end_time = std::chrono::high_resolution_clock::now();
-            double duration_s = std::chrono::duration<double>(end_time - start_time).count();
-            double cpu_percent = get_cpu_percent() / 100.0;  // Convert to 0-1 range
-            double avg_power = idle_watts + (tdp_watts - idle_watts) * cpu_percent;
+            // Use actual benchmark duration if provided, otherwise measure internally
+            double duration_s;
+            if (actual_duration_s > 0) {
+                duration_s = actual_duration_s;
+            } else {
+                auto end_time = std::chrono::high_resolution_clock::now();
+                duration_s = std::chrono::duration<double>(end_time - start_time).count();
+            }
+
+            // For very short workloads (< 2ms), CPU% measurement is unreliable
+            // Use a fixed power estimate based on stable measurements from longer workloads (5×5+)
+            double avg_power;
+            if (duration_s < 0.002) {
+                // Use fixed 65W based on stable measurements from longer workloads
+                avg_power = 65.0;
+            } else {
+                double cpu_percent = get_cpu_percent() / 100.0;  // Convert to 0-1 range
+                avg_power = idle_watts + (tdp_watts - idle_watts) * cpu_percent;
+            }
             return avg_power * duration_s;
         }
     }
@@ -604,10 +619,10 @@ public:
         engine.search(initial_state, iterations);
 
         auto end = std::chrono::high_resolution_clock::now();
-        double total_energy_j = monitor.get_energy_joules();
+        double elapsed_s = std::chrono::duration<double>(end - start).count();
+        double total_energy_j = monitor.get_energy_joules(elapsed_s);
 
         // Get timing measurements
-        double elapsed_s = std::chrono::duration<double>(end - start).count();
         double phase_times_s[4];
         engine.get_phase_times(phase_times_s);
 
@@ -753,6 +768,7 @@ int main(int argc, char** argv) {
     int board_size = -1;
     int iterations = 1000;
     int trials = 5;
+    int warmup_trials = 0;
     double tdp = 55.3;
     double idle_power = 20.0;
     bool all_sizes = false;
@@ -766,6 +782,8 @@ int main(int argc, char** argv) {
             iterations = std::stoi(argv[++i]);
         } else if (arg == "--trials" && i + 1 < argc) {
             trials = std::stoi(argv[++i]);
+        } else if (arg == "--warmup" && i + 1 < argc) {
+            warmup_trials = std::stoi(argv[++i]);
         } else if (arg == "--tdp" && i + 1 < argc) {
             tdp = std::stod(argv[++i]);
         } else if (arg == "--idle" && i + 1 < argc) {
@@ -782,6 +800,7 @@ int main(int argc, char** argv) {
                       << "  --iterations N     Number of MCTS iterations (default: 1000)\n"
                       << "                     Ignored when --all-sizes is used (auto per size)\n"
                       << "  --trials N         Number of trials per size (default: 5)\n"
+                      << "  --warmup N         Number of warmup trials before measurement (default: 0)\n"
                       << "  --all-sizes        Run all board sizes with standard iteration counts:\n"
                       << "                       2×2:200, 3×3:500, 5×5:1K, 9×9:5K, 13×13:7.5K, 19×19:10K\n"
                       << "  --tdp W            CPU TDP in watts (default: 55.3)\n"
@@ -839,6 +858,9 @@ int main(int argc, char** argv) {
         std::cout << "Iterations: " << iterations << "\n";
     }
     std::cout << "Trials: " << trials << "\n";
+    if (warmup_trials > 0) {
+        std::cout << "Warmup trials: " << warmup_trials << "\n";
+    }
     std::cout << "CPU TDP: " << tdp << "W\n";
     std::cout << "CPU Idle: " << idle_power << "W\n\n";
 
@@ -853,6 +875,16 @@ int main(int argc, char** argv) {
 
         std::cout << "--- Testing " << size << "×" << size << " board ("
                   << size_iterations << " iterations) ---" << std::endl;
+
+        // Run warmup trials (not recorded)
+        if (warmup_trials > 0) {
+            std::cout << "  Running " << warmup_trials << " warmup trials..." << std::endl;
+            for (int warmup = 1; warmup <= warmup_trials; warmup++) {
+                benchmark.run_trial(size, size_iterations, warmup);
+            }
+        }
+
+        // Run actual measured trials
         for (int trial = 1; trial <= trials; trial++) {
             BenchmarkResult result = benchmark.run_trial(size, size_iterations, trial);
             all_results.push_back(result);
