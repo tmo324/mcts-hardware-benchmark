@@ -176,30 +176,30 @@ make cpu-nn
 # Output: results/nn/cpu_nn_mcts_*_intel_*_TIMESTAMP.csv
 ```
 
-### NVIDIA H100 - Fair Comparison Mode (GPU)
-Single-tree, sequential playouts (matches CPU algorithm):
-```bash
-# Traditional MCTS (Random Rollout)
-cd benchmarks/benchmark_gpu_traditional
-python benchmark.py --all-sizes --approach fair
-# Output: results/traditional/mcts_benchmark_gpu_fair_*_TIMESTAMP.csv
+### NVIDIA H100 (GPU)
 
-# NN-MCTS
-cd ../..
+**NN-MCTS** (single optimized implementation):
+```bash
 make gpu-nn
 ./benchmark_gpu_nn --all-sizes
 # Output: results/nn/gpu_nn_mcts_*_TIMESTAMP.csv
 ```
 
-### NVIDIA H100 - Maximum Capability Mode (GPU)
-Multi-tree (8 trees), parallel playouts (128), demonstrates max throughput:
+**Traditional MCTS** has two modes:
+
+**Fair Comparison Mode** (single-tree, sequential - matches CPU algorithm):
 ```bash
-# Traditional MCTS only (8× more work than fair mode)
+cd benchmarks/benchmark_gpu_traditional
+python benchmark.py --all-sizes --approach fair
+# Output: results/traditional/mcts_benchmark_gpu_fair_*_TIMESTAMP.csv
+```
+
+**Maximum Capability Mode** (8 trees, 128 parallel playouts - max throughput):
+```bash
 cd benchmarks/benchmark_gpu_traditional
 python benchmark.py --all-sizes --approach capability
 # Output: results/traditional/mcts_benchmark_gpu_capability_*_TIMESTAMP.csv
-
-# Note: NN-MCTS uses same implementation for both modes (already optimized)
+# Note: This runs 8× more work per iteration than fair mode
 ```
 
 ### Complete Comparison Workflow
