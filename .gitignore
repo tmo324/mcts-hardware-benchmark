@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -8,11 +9,27 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Logs
 *.log
+
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# OS
 .DS_Store
-mcts_cpu_benchmark
+
+# Compiled binaries
+benchmark_cpu_traditional
+benchmark_cpu_nn
+benchmark_gpu_nn
+
+# Results (optional: comment out to track results)
+# results/*.csv
+
+# Weights (if regenerating)
+# weights/*/weights*.bin

@@ -1,42 +1,112 @@
-# Makefile for MCTS CPU Benchmark (C++ Implementation)
-# Optimized for Intel Xeon Platinum 8462Y+ (Sapphire Rapids)
+# Makefile for MCTS Benchmarks (CPU and GPU, Traditional and Neural Network)
+# ==============================================================================
 
+# Compilers
 CXX = g++
-CXXFLAGS = -std=c++17 -O3 -march=native -ffast-math -Wall -Wextra
-TARGET = mcts_cpu_benchmark
-SOURCE = mcts_cpu_benchmark.cpp
+NVCC = nvcc
 
-# Default target
-all: $(TARGET)
+# Directories
+SRC_DIR = benchmarks
+INC_DIR = include
 
-# Compile the benchmark
-$(TARGET): $(SOURCE)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCE)
-	@echo "✓ Compiled successfully: ./$(TARGET)"
-	@echo "  Run with: ./$(TARGET) --help"
+# Common flags
+CXXFLAGS = -std=c++17 -O3 -march=native -ffast-math -Wall -Wextra -I$(INC_DIR)
+
+# CUDA flags
+NVCCFLAGS = -std=c++17 -O3 -arch=sm_80 -I$(INC_DIR)
+CUDA_LIBS = -lcublas
+
+# Targets
+TARGET_CPU_TRAD = benchmark_cpu_traditional
+TARGET_CPU_NN = benchmark_cpu_nn
+TARGET_GPU_NN = benchmark_gpu_nn
+
+# Sources
+SOURCE_CPU_TRAD = $(SRC_DIR)/benchmark_cpu_traditional.cpp
+SOURCE_CPU_NN = $(SRC_DIR)/benchmark_cpu_nn.cpp
+SOURCE_GPU_NN = $(SRC_DIR)/benchmark_gpu_nn.cu
+
+# Default target: build all benchmarks
+all: $(TARGET_CPU_TRAD) $(TARGET_CPU_NN) $(TARGET_GPU_NN)
+
+# Build individual targets
+$(TARGET_CPU_TRAD): $(SOURCE_CPU_TRAD)
+	$(CXX) $(CXXFLAGS) -o $(TARGET_CPU_TRAD) $(SOURCE_CPU_TRAD)
+	@echo "✓ Compiled: ./$(TARGET_CPU_TRAD)"
+
+$(TARGET_CPU_NN): $(SOURCE_CPU_NN) $(INC_DIR)/nn_inference.h
+	$(CXX) $(CXXFLAGS) -o $(TARGET_CPU_NN) $(SOURCE_CPU_NN)
+	@echo "✓ Compiled: ./$(TARGET_CPU_NN)"
+
+$(TARGET_GPU_NN): $(SOURCE_GPU_NN)
+	$(NVCC) $(NVCCFLAGS) $(CUDA_LIBS) -o $(TARGET_GPU_NN) $(SOURCE_GPU_NN)
+	@echo "✓ Compiled: ./$(TARGET_GPU_NN)"
+
+# Convenience targets for building specific benchmarks
+cpu-trad: $(TARGET_CPU_TRAD)
+cpu-nn: $(TARGET_CPU_NN)
+gpu-nn: $(TARGET_GPU_NN)
 
 # Clean build artifacts
 clean:
-	rm -f $(TARGET)
-	@echo "✓ Cleaned build artifacts"
+	rm -f $(TARGET_CPU_TRAD) $(TARGET_CPU_NN) $(TARGET_GPU_NN)
+	@echo "✓ Cleaned all build artifacts"
 
-# Run quick test (2x2 board, 1000 iterations)
-test: $(TARGET)
-	@echo "Running quick test (2x2 board, 1000 iterations)..."
-	./$(TARGET) --board-size 2 --iterations 1000 --trials 1
+# Test targets
+test-cpu-trad: $(TARGET_CPU_TRAD)
+	@echo "Testing CPU traditional MCTS (2x2, 1000 iterations)..."
+	./$(TARGET_CPU_TRAD) --board-size 2 --iterations 1000
 
-# Run all board sizes (equivalent to old run_all_benchmarks.sh)
-benchmark: $(TARGET)
-	@echo "Running comprehensive benchmark (all board sizes)..."
-	./$(TARGET) --all-sizes --iterations 5000 --trials 5
+test-cpu-nn: $(TARGET_CPU_NN)
+	@echo "Testing CPU NN-MCTS (2x2, 100 iterations)..."
+	./$(TARGET_CPU_NN) --board-size 2 --iterations 100
+
+test-gpu-nn: $(TARGET_GPU_NN)
+	@echo "Testing GPU NN-MCTS (2x2, 100 iterations)..."
+	./$(TARGET_GPU_NN) --board-size 2 --iterations 100
+
+test: test-cpu-trad test-cpu-nn test-gpu-nn
+
+# Benchmark targets (full runs)
+benchmark-cpu-trad: $(TARGET_CPU_TRAD)
+	@echo "Running CPU traditional benchmark (all sizes)..."
+	./$(TARGET_CPU_TRAD) --all-sizes --iterations 5000
+
+benchmark-cpu-nn: $(TARGET_CPU_NN)
+	@echo "Running CPU NN benchmark (all sizes)..."
+	./$(TARGET_CPU_NN) --all-sizes --iterations 1000
+
+benchmark-gpu-nn: $(TARGET_GPU_NN)
+	@echo "Running GPU NN benchmark (all sizes)..."
+	./$(TARGET_GPU_NN) --all-sizes --iterations 1000
+
+benchmark: benchmark-cpu-trad benchmark-cpu-nn benchmark-gpu-nn
 
 # Help target
 help:
-	@echo "MCTS CPU Benchmark - Make targets:"
-	@echo "  make          - Build the benchmark (default)"
-	@echo "  make test     - Quick test (2x2, 1000 iterations)"
-	@echo "  make benchmark - Run full benchmark suite"
-	@echo "  make clean    - Remove build artifacts"
-	@echo "  make help     - Show this help message"
+	@echo "MCTS Benchmark Suite - Make targets:"
+	@echo ""
+	@echo "Build targets:"
+	@echo "  make              - Build all benchmarks (default)"
+	@echo "  make cpu-trad     - Build CPU traditional (random rollout)"
+	@echo "  make cpu-nn       - Build CPU neural network"
+	@echo "  make gpu-nn       - Build GPU neural network"
+	@echo ""
+	@echo "Test targets (quick validation):"
+	@echo "  make test         - Test all benchmarks (2x2, few iterations)"
+	@echo "  make test-cpu-trad - Test CPU traditional"
+	@echo "  make test-cpu-nn  - Test CPU NN"
+	@echo "  make test-gpu-nn  - Test GPU NN"
+	@echo ""
+	@echo "Benchmark targets (full runs):"
+	@echo "  make benchmark    - Run all benchmarks (all sizes)"
+	@echo "  make benchmark-cpu-trad - CPU traditional (5000 iter)"
+	@echo "  make benchmark-cpu-nn   - CPU NN (1000 iter)"
+	@echo "  make benchmark-gpu-nn   - GPU NN (1000 iter)"
+	@echo ""
+	@echo "Utility targets:"
+	@echo "  make clean        - Remove all build artifacts"
+	@echo "  make help         - Show this help message"
 
-.PHONY: all clean test benchmark help
+.PHONY: all cpu-trad cpu-nn gpu-nn clean test test-cpu-trad test-cpu-nn test-gpu-nn \
+        benchmark benchmark-cpu-trad benchmark-cpu-nn benchmark-gpu-nn help

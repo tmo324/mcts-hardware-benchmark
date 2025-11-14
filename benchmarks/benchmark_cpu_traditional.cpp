@@ -896,7 +896,7 @@ int main(int argc, char** argv) {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     std::ostringstream filename_oss;
-    filename_oss << "results/mcts_benchmark_cpu_"
+    filename_oss << "results/traditional/mcts_benchmark_cpu_"
                  << sanitize_filename(get_processor_name()) << "_"
                  << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S")
                  << ".csv";
