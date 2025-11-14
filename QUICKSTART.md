@@ -140,35 +140,86 @@ mcts-hardware-benchmark/
 
 ---
 
-## 📈 Typical Use Cases
+## 📈 Full Benchmark Protocol (5 Trials per Board Size)
 
-### Compare Random vs NN on Same Hardware
+All benchmarks automatically run **5 trials** per board size with board-specific iteration counts:
+- **2×2**: 200 iterations
+- **3×3**: 500 iterations
+- **5×5**: 1,000 iterations
+- **9×9**: 5,000 iterations
+- **13×13**: 7,500 iterations
+- **19×19**: 10,000 iterations
+
+### AMD Ryzen Threadripper (CPU)
 ```bash
-# CPU: Random vs NN
-./benchmark_cpu_traditional --board-size 9 --iterations 5000
-./benchmark_cpu_nn --board-size 9 --iterations 1000
+# Traditional MCTS (Random Rollout)
+make cpu-trad
+./benchmark_cpu_traditional --all-sizes
+# Output: results/traditional/mcts_benchmark_cpu_amd_*_TIMESTAMP.csv
 
-# GPU: Random vs NN
-cd benchmarks/benchmark_gpu_traditional && python benchmark.py --board-size 9 --iterations 5000
-cd ../.. && ./benchmark_gpu_nn --board-size 9 --iterations 1000
+# NN-MCTS
+make cpu-nn
+./benchmark_cpu_nn --all-sizes
+# Output: results/nn/cpu_nn_mcts_*_amd_*_TIMESTAMP.csv
 ```
 
-### Compare CPU vs GPU with Same Algorithm
+### Intel Xeon (CPU)
 ```bash
-# NN-MCTS: CPU vs GPU
-./benchmark_cpu_nn --all-sizes --iterations 1000
-./benchmark_gpu_nn --all-sizes --iterations 1000
+# Traditional MCTS (Random Rollout)
+make cpu-trad
+./benchmark_cpu_traditional --all-sizes
+# Output: results/traditional/mcts_benchmark_cpu_intel_*_TIMESTAMP.csv
+
+# NN-MCTS
+make cpu-nn
+./benchmark_cpu_nn --all-sizes
+# Output: results/nn/cpu_nn_mcts_*_intel_*_TIMESTAMP.csv
 ```
 
-### Full Benchmark Suite
+### NVIDIA H100 - Fair Comparison Mode (GPU)
+Single-tree, sequential playouts (matches CPU algorithm):
 ```bash
-# Traditional baselines (higher iteration counts)
-./benchmark_cpu_traditional --all-sizes --iterations 5000
-cd benchmarks/benchmark_gpu_traditional && python benchmark.py --all-sizes --iterations 5000
+# Traditional MCTS (Random Rollout)
+cd benchmarks/benchmark_gpu_traditional
+python benchmark.py --all-sizes --approach fair
+# Output: results/traditional/mcts_benchmark_gpu_fair_*_TIMESTAMP.csv
 
-# NN-based implementations (lower iteration counts needed)
-cd ../.. && ./benchmark_cpu_nn --all-sizes --iterations 1000
-./benchmark_gpu_nn --all-sizes --iterations 1000
+# NN-MCTS
+cd ../..
+make gpu-nn
+./benchmark_gpu_nn --all-sizes
+# Output: results/nn/gpu_nn_mcts_*_TIMESTAMP.csv
+```
+
+### NVIDIA H100 - Maximum Capability Mode (GPU)
+Multi-tree (8 trees), parallel playouts (128), demonstrates max throughput:
+```bash
+# Traditional MCTS only (8× more work than fair mode)
+cd benchmarks/benchmark_gpu_traditional
+python benchmark.py --all-sizes --approach capability
+# Output: results/traditional/mcts_benchmark_gpu_capability_*_TIMESTAMP.csv
+
+# Note: NN-MCTS uses same implementation for both modes (already optimized)
+```
+
+### Complete Comparison Workflow
+```bash
+# 1. Run on CPU node (AMD or Intel)
+make cpu-trad cpu-nn
+./benchmark_cpu_traditional --all-sizes
+./benchmark_cpu_nn --all-sizes
+
+# 2. Run on GPU node
+cd benchmarks/benchmark_gpu_traditional
+python benchmark.py --all-sizes --approach fair
+python benchmark.py --all-sizes --approach capability
+cd ../..
+make gpu-nn
+./benchmark_gpu_nn --all-sizes
+
+# 3. Collect results
+ls -lh results/traditional/*.csv
+ls -lh results/nn/*.csv
 ```
 
 ---
